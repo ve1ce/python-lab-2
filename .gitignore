@@ -1,0 +1,15 @@
+# питон
+__pycache__/
+*.pyc
+
+# venv
+.venv/
+venv/
+
+# пч
+.idea/
+
+# отчеты
+currency_report.docx
+
+.env
