@@ -7,15 +7,19 @@ class CurrencyCalculator:
     def __repr__(self):
         return "CurrencyCalculator()"
 
+
     @staticmethod
     def calculate(transaction):
-        # Получаем курсы валют
+        # Получаем курсы валют относительно рубля
         source_rate = transaction.account.currency.rate
         target_rate = transaction.target_currency.rate
 
+        # Рассчитываем обменный курс между валютами
+        exchange_rate = source_rate / target_rate
+
         # Конвертируем сумму
         converted_amount = round(
-            transaction.amount * source_rate / target_rate, 2
+            transaction.amount * exchange_rate, 2
         )
 
         # Рассчитываем комиссию
@@ -23,14 +27,16 @@ class CurrencyCalculator:
             converted_amount * transaction.commission_percent / 100, 2
         )
 
-        # Итоговая сумма
+        # Итоговая сумма после комиссии
         final_amount = round(converted_amount - commission, 2)
 
         return {
+            "exchange_rate": exchange_rate,
             "converted_amount": converted_amount,
             "commission": commission,
             "final_amount": final_amount
         }
+
 
 
 class InterestCalculator:

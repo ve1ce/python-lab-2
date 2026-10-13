@@ -19,7 +19,11 @@ class Currency(FinancialEntity):
     RATES = {
         "RUB": 1.0,
         "USD": 90.0,
-        "EUR": 100.0
+        "EUR": 100.0,
+        "GBP": 115.0,
+        "CNY": 12.5,
+        "JPY": 0.6,
+        "CHF": 105.0
     }
 
     def __init__(self, code):

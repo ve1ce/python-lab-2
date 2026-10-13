@@ -62,6 +62,8 @@ def main():
             }
 
             conversion_result.set(
+                f"Курс: 1 {source.code} = "
+                f"{result['exchange_rate']:.4f} {target.code}\n"
                 f"Сумма: {result['converted_amount']:.2f} {target.code}\n"
                 f"Комиссия: {result['commission']:.2f} {target.code}\n"
                 f"Итого: {result['final_amount']:.2f} {target.code}"
@@ -162,7 +164,7 @@ def main():
     ttk.Combobox(
         conversion_frame,
         textvariable=source_var,
-        values=["RUB", "USD", "EUR"],
+        values=list(Currency.RATES.keys()),
         state="readonly",
         width=17
     ).grid(row=0, column=1, pady=3)

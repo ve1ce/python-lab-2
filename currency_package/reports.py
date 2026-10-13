@@ -23,6 +23,12 @@ def export_report(file_path, conversion=None, interest=None):
         )
 
         document.add_paragraph(
+            f"Обменный курс: 1 {conversion['source']} = "
+            f"{conversion['exchange_rate']:.4f} "
+            f"{conversion['target']}"
+        )
+
+        document.add_paragraph(
             f"Сумма после конвертации: "
             f"{conversion['converted_amount']:.2f} "
             f"{conversion['target']}"

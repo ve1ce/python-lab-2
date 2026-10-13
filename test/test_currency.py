@@ -24,7 +24,7 @@ def test_currency():
 # Проверка неправильной валюты
 def test_invalid_currency():
     with pytest.raises(ValueError):
-        Currency("GBP")
+        Currency("AUD")
 
 
 # Проверка изменения кода валюты
@@ -186,3 +186,35 @@ def test_dunder_methods():
 
     assert str(CurrencyCalculator()) == "Калькулятор валют"
     assert repr(InterestCalculator()) == "InterestCalculator()"
+
+
+def test_exchange_rate():
+    usd = Currency("USD")
+    eur = Currency("EUR")
+    account = Account("001", usd, 500)
+
+    transaction = Transaction(account, eur, 100, 2)
+
+    result = CurrencyCalculator.calculate(transaction)
+
+    assert result["exchange_rate"] == pytest.approx(0.9)
+    assert result["converted_amount"] == 90.0
+    assert result["commission"] == 1.8
+    assert result["final_amount"] == 88.2
+
+# тест новых валют
+@pytest.mark.parametrize(
+    "code, expected_rate",
+    [
+        ("GBP", 115.0),
+        ("CNY", 12.5),
+        ("JPY", 0.6),
+        ("CHF", 105.0)
+    ]
+)
+def test_additional_currencies(code, expected_rate):
+    currency = Currency(code)
+
+    assert currency.code == code
+    assert currency.rate == expected_rate
+
