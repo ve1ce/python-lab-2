@@ -13,3 +13,10 @@ venv/
 currency_report.docx
 
 .env
+
+# SQLite
+*.db
+*.db-journal
+
+# Pytest
+.pytest_cache/

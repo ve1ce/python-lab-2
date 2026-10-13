@@ -1,13 +1,15 @@
 import tkinter as tk
+import sqlite3
 from tkinter import ttk, messagebox, filedialog
+from database import (initialize_database, save_conversion, save_interest)
 
 from currency_package.models import Currency, Account, Transaction
 from currency_package.calculations import CurrencyCalculator, InterestCalculator
 from currency_package.reports import export_report
 
-
-
 def main():
+    initialize_database()
+
     # Создаём главное окно
     root = tk.Tk()
     root.title("Лабораторная №2 — Курсы валют")
@@ -61,6 +63,8 @@ def main():
                 **result
             }
 
+            save_conversion(last_results["conversion"])
+
             conversion_result.set(
                 f"Курс: 1 {source.code} = "
                 f"{result['exchange_rate']:.4f} {target.code}\n"
@@ -71,6 +75,12 @@ def main():
 
         except ValueError as error:
             messagebox.showerror("Ошибка", str(error))
+
+        except sqlite3.Error as error:
+            messagebox.showerror(
+                "Ошибка базы данных",
+                str(error)
+            )
 
     # Функция расчёта процентов
     def calculate_interest():
@@ -97,12 +107,20 @@ def main():
                 "result": interest
             }
 
+            save_interest(last_results["interest"])
+
             interest_result.set(
                 f"Начисленные проценты: {interest:.2f} {currency.code}"
             )
 
         except ValueError as error:
             messagebox.showerror("Ошибка", str(error))
+
+        except sqlite3.Error as error:
+            messagebox.showerror(
+                "Ошибка базы данных",
+                str(error)
+            )
 
     def save_report():
         # Проверяем наличие результатов
@@ -176,7 +194,7 @@ def main():
     ttk.Combobox(
         conversion_frame,
         textvariable=target_var,
-        values=["RUB", "USD", "EUR"],
+        values=list(Currency.RATES.keys()),
         state="readonly",
         width=17
     ).grid(row=1, column=1, pady=3)
