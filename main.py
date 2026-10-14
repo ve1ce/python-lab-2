@@ -1,282 +1,187 @@
-import tkinter as tk
+
+import math
 import sqlite3
-from tkinter import ttk, messagebox, filedialog
-from database import (initialize_database, save_conversion, save_interest)
+from pathlib import Path
 
 from currency_package.models import Currency, Account, Transaction
 from currency_package.calculations import CurrencyCalculator, InterestCalculator
 from currency_package.reports import export_report
 
+from database import (
+    DB_PATH,
+    initialize_database,
+    save_conversion,
+    save_interest
+)
+
+
+# Ввод числового значения
+def read_number(message):
+    value = float(input(message).strip().replace(",", "."))
+
+    if not math.isfinite(value):
+        raise ValueError("Введите корректное конечное число")
+
+    return value
+
+
+# Конвертация валют
+def convert_currency(last_results):
+    print("\n=== Конвертация валют ===")
+    print("Доступные валюты:", ", ".join(Currency.RATES.keys()))
+
+    source = Currency(input("Исходная валюта: ").strip())
+    target = Currency(input("Целевая валюта: ").strip())
+
+    amount = read_number("Сумма: ")
+    commission = read_number("Комиссия (%): ")
+
+    # Создаём объекты
+    account = Account("001", source)
+
+    transaction = Transaction(
+        account,
+        target,
+        amount,
+        commission
+    )
+
+    # Выполняем расчёт
+    result = CurrencyCalculator.calculate(transaction)
+
+    # Подготавливаем данные для сохранения
+    data = {
+        "source": source.code,
+        "target": target.code,
+        "amount": amount,
+        "commission_percent": commission,
+        **result
+    }
+
+    # Сохраняем в SQLite
+    save_conversion(data)
+
+    # Запоминаем результат для Word-отчёта
+    last_results["conversion"] = data
+
+    print("\n=== Результат конвертации ===")
+    print(
+        f"Курс: 1 {source.code} = "
+        f"{result['exchange_rate']:.4f} {target.code}"
+    )
+    print(f"Сумма: {result['converted_amount']:.2f} {target.code}")
+    print(f"Комиссия: {result['commission']:.2f} {target.code}")
+    print(f"Итого: {result['final_amount']:.2f} {target.code}")
+    print("Результат сохранён в SQLite!")
+
+
+# Расчёт процентов
+def calculate_interest(last_results):
+    print("\n=== Расчёт процентов ===")
+    print("Доступные валюты:", ", ".join(Currency.RATES.keys()))
+
+    currency = Currency(input("Валюта счёта: ").strip())
+    balance = read_number("Баланс счёта: ")
+    annual_rate = read_number("Годовая ставка (%): ")
+    days = int(input("Количество дней: ").strip())
+
+    account = Account("001", currency, balance)
+
+    interest = InterestCalculator.calculate(
+        account,
+        annual_rate,
+        days
+    )
+
+    data = {
+        "currency": currency.code,
+        "balance": balance,
+        "annual_rate": annual_rate,
+        "days": days,
+        "result": interest
+    }
+
+    # Сохраняем в SQLite
+    save_interest(data)
+
+    # Запоминаем результат для Word-отчёта
+    last_results["interest"] = data
+
+    print("\n=== Результат расчёта ===")
+    print(f"Начисленные проценты: {interest:.2f} {currency.code}")
+    print("Результат сохранён в SQLite!")
+
+
+# Экспорт в Word
+def save_report(last_results):
+    if all(value is None for value in last_results.values()):
+        print("Сначала выполните хотя бы один расчёт!")
+        return
+
+    filename = input(
+        "Имя отчёта [currency_report.docx]: "
+    ).strip() or "currency_report.docx"
+
+    # Используем только имя файла
+    if Path(filename).name != filename:
+        raise ValueError("Укажите имя файла без пути к папке")
+
+    if not filename.lower().endswith(".docx"):
+        filename += ".docx"
+
+    file_path = DB_PATH.parent / filename
+
+    export_report(
+        str(file_path),
+        conversion=last_results["conversion"],
+        interest=last_results["interest"]
+    )
+
+    print(f"Отчёт успешно сохранён: {file_path}")
+
+
+# Главное меню приложения
 def main():
     initialize_database()
 
-    # Создаём главное окно
-    root = tk.Tk()
-    root.title("Лабораторная №2 — Курсы валют")
-    root.geometry("520x600")
-    root.resizable(False, False)
-
-    # Переменные интерфейса
-    source_var = tk.StringVar(value="USD")
-    target_var = tk.StringVar(value="RUB")
-    amount_var = tk.StringVar(value="100")
-    commission_var = tk.StringVar(value="2")
-
-    balance_var = tk.StringVar(value="500")
-    rate_var = tk.StringVar(value="5")
-    days_var = tk.StringVar(value="30")
-
-    conversion_result = tk.StringVar(value="Результат появится здесь")
-    interest_result = tk.StringVar(value="Результат появится здесь")
-
-    # Последние результаты вычислений
     last_results = {
         "conversion": None,
         "interest": None
     }
 
-    # Функция конвертации валют
-    def convert_currency():
-        try:
-            source = Currency(source_var.get())
-            target = Currency(target_var.get())
-
-            amount = float(amount_var.get())
-            commission = float(commission_var.get())
-
-            account = Account("001", source)
-
-            transaction = Transaction(
-                account,
-                target,
-                amount,
-                commission
-            )
-
-            result = CurrencyCalculator.calculate(transaction)
-
-            last_results["conversion"] = {
-                "source": source.code,
-                "target": target.code,
-                "amount": amount,
-                "commission_percent": commission,
-                **result
-            }
-
-            save_conversion(last_results["conversion"])
-
-            conversion_result.set(
-                f"Курс: 1 {source.code} = "
-                f"{result['exchange_rate']:.4f} {target.code}\n"
-                f"Сумма: {result['converted_amount']:.2f} {target.code}\n"
-                f"Комиссия: {result['commission']:.2f} {target.code}\n"
-                f"Итого: {result['final_amount']:.2f} {target.code}"
-            )
-
-        except ValueError as error:
-            messagebox.showerror("Ошибка", str(error))
-
-        except sqlite3.Error as error:
-            messagebox.showerror(
-                "Ошибка базы данных",
-                str(error)
-            )
-
-    # Функция расчёта процентов
-    def calculate_interest():
-        try:
-            currency = Currency(source_var.get())
-
-            balance = float(balance_var.get())
-            annual_rate = float(rate_var.get())
-            days = int(days_var.get())
-
-            account = Account("001", currency, balance)
-
-            interest = InterestCalculator.calculate(
-                account,
-                annual_rate,
-                days
-            )
-
-            last_results["interest"] = {
-                "currency": currency.code,
-                "balance": balance,
-                "annual_rate": annual_rate,
-                "days": days,
-                "result": interest
-            }
-
-            save_interest(last_results["interest"])
-
-            interest_result.set(
-                f"Начисленные проценты: {interest:.2f} {currency.code}"
-            )
-
-        except ValueError as error:
-            messagebox.showerror("Ошибка", str(error))
-
-        except sqlite3.Error as error:
-            messagebox.showerror(
-                "Ошибка базы данных",
-                str(error)
-            )
-
-    def save_report():
-        # Проверяем наличие результатов
-        if all(value is None for value in last_results.values()):
-            messagebox.showwarning(
-                "Нет данных",
-                "Сначала выполните хотя бы один расчёт."
-            )
-            return
-
-        # Выбираем место сохранения
-        file_path = filedialog.asksaveasfilename(
-            title="Сохранить отчёт",
-            defaultextension=".docx",
-            filetypes=[("Документ Word", "*.docx")],
-            initialfile="currency_report.docx"
-        )
-
-        if not file_path:
-            return
+    while True:
+        print("\n========== КУРСЫ ВАЛЮТ ==========")
+        print("1. Конвертация валют")
+        print("2. Расчёт процентов по счёту")
+        print("3. Сохранить отчёт в Word")
+        print("0. Выход")
+        print("=================================")
 
         try:
-            export_report(
-                file_path,
-                conversion=last_results["conversion"],
-                interest=last_results["interest"]
-            )
+            choice = input("Выберите действие: ").strip()
 
-            messagebox.showinfo(
-                "Успешно",
-                "Отчёт успешно сохранён!"
-            )
+            if choice == "1":
+                convert_currency(last_results)
 
-        except Exception as error:
-            messagebox.showerror(
-                "Ошибка сохранения",
-                str(error)
-            )
+            elif choice == "2":
+                calculate_interest(last_results)
 
-    # Заголовок приложения
-    ttk.Label(
-        root,
-        text="Курсы валют",
-        font=("Arial", 18, "bold")
-    ).pack(pady=12)
+            elif choice == "3":
+                save_report(last_results)
 
-    # Блок конвертации валют
-    conversion_frame = ttk.LabelFrame(
-        root,
-        text="Конвертация валют",
-        padding=12
-    )
-    conversion_frame.pack(fill="x", padx=20, pady=5)
+            elif choice == "0":
+                print("Завершение программы.")
+                break
 
-    ttk.Label(conversion_frame, text="Исходная валюта:").grid(
-        row=0, column=0, sticky="w", pady=3
-    )
+            else:
+                print("Неизвестная команда!")
 
-    ttk.Combobox(
-        conversion_frame,
-        textvariable=source_var,
-        values=list(Currency.RATES.keys()),
-        state="readonly",
-        width=17
-    ).grid(row=0, column=1, pady=3)
+        except (ValueError, sqlite3.Error, OSError) as error:
+            print(f"Ошибка: {error}")
 
-    ttk.Label(conversion_frame, text="Целевая валюта:").grid(
-        row=1, column=0, sticky="w", pady=3
-    )
-
-    ttk.Combobox(
-        conversion_frame,
-        textvariable=target_var,
-        values=list(Currency.RATES.keys()),
-        state="readonly",
-        width=17
-    ).grid(row=1, column=1, pady=3)
-
-    ttk.Label(conversion_frame, text="Сумма:").grid(
-        row=2, column=0, sticky="w", pady=3
-    )
-
-    ttk.Entry(
-        conversion_frame, textvariable=amount_var
-    ).grid(row=2, column=1, pady=3)
-
-    ttk.Label(conversion_frame, text="Комиссия (%):").grid(
-        row=3, column=0, sticky="w", pady=3
-    )
-
-    ttk.Entry(
-        conversion_frame, textvariable=commission_var
-    ).grid(row=3, column=1, pady=3)
-
-    ttk.Button(
-        conversion_frame,
-        text="Конвертировать",
-        command=convert_currency
-    ).grid(row=4, column=0, columnspan=2, pady=8)
-
-    ttk.Label(
-        conversion_frame,
-        textvariable=conversion_result,
-        justify="left"
-    ).grid(row=5, column=0, columnspan=2, pady=5)
-
-    # Блок расчёта процентов
-    interest_frame = ttk.LabelFrame(
-        root,
-        text="Проценты по счёту",
-        padding=12
-    )
-    interest_frame.pack(fill="x", padx=20, pady=5)
-
-    ttk.Label(interest_frame, text="Баланс счёта:").grid(
-        row=0, column=0, sticky="w", pady=3
-    )
-
-    ttk.Entry(
-        interest_frame, textvariable=balance_var
-    ).grid(row=0, column=1, pady=3)
-
-    ttk.Label(interest_frame, text="Годовая ставка (%):").grid(
-        row=1, column=0, sticky="w", pady=3
-    )
-
-    ttk.Entry(
-        interest_frame, textvariable=rate_var
-    ).grid(row=1, column=1, pady=3)
-
-    ttk.Label(interest_frame, text="Количество дней:").grid(
-        row=2, column=0, sticky="w", pady=3
-    )
-
-    ttk.Entry(
-        interest_frame, textvariable=days_var
-    ).grid(row=2, column=1, pady=3)
-
-    ttk.Button(
-        interest_frame,
-        text="Рассчитать проценты",
-        command=calculate_interest
-    ).grid(row=3, column=0, columnspan=2, pady=8)
-
-    ttk.Label(
-        interest_frame,
-        textvariable=interest_result
-    ).grid(row=4, column=0, columnspan=2, pady=5)
-
-    ttk.Button(
-        root,
-        text="Сохранить отчёт в Word",
-        command=save_report
-    ).pack(pady=12)
-
-    root.mainloop()
+        except (KeyboardInterrupt, EOFError):
+            print("\nЗавершение программы.")
+            break
 
 
 if __name__ == "__main__":

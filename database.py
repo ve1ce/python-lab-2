@@ -1,16 +1,19 @@
+import os
 import sqlite3
-import math
-
-from currency_package.models import Currency, Account, Transaction
-from currency_package.calculations import CurrencyCalculator
 from pathlib import Path
 
 
 # Путь к файлу базы данных
-DB_PATH = Path(__file__).resolve().parent / "currency_lab.db"
+DB_PATH = Path(
+    os.environ.get(
+        "CURRENCY_DB_PATH",
+        str(Path(__file__).resolve().parent / "currency_lab.db")
+    )
+)
 
 
 def initialize_database():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DB_PATH)
 
     try:

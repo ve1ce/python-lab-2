@@ -14,9 +14,9 @@ currency_report.docx
 
 .env
 
-# SQLite
+# sqlite
 *.db
 *.db-journal
 
-# Pytest
+# pytest
 .pytest_cache/
