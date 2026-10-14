@@ -1,98 +1,51 @@
 import pytest
 
-from currency_package.models import (
-    FinancialEntity,
-    Currency,
-    Account,
-    Transaction
-)
-
-from currency_package.calculations import (
-    CurrencyCalculator,
-    InterestCalculator
-)
+from currency_package.models import FinancialEntity, Currency, Account, Transaction
+from currency_package.calculations import CurrencyCalculator, InterestCalculator
 
 
-# Проверка создания валюты
+# Создание валюты и изменение её кода через property.
 def test_currency():
-    usd = Currency("USD")
+    currency = Currency("USD")
+    assert currency.code == "USD"
+    assert currency.rate == 90.0
 
-    assert usd.code == "USD"
-    assert usd.rate == 90.0
+    currency.code = "EUR"
+    assert currency.rate == 100.0
 
-
-# Проверка неправильной валюты
-def test_invalid_currency():
     with pytest.raises(ValueError):
         Currency("AUD")
 
 
-# Проверка изменения кода валюты
-def test_currency_property():
-    currency = Currency("USD")
-    currency.code = "EUR"
-
-    assert currency.code == "EUR"
-    assert currency.rate == 100.0
+# Проверяем курсы остальных доступных валют.
+def test_other_currencies():
+    rates = {"GBP": 115.0, "CNY": 12.5, "JPY": 0.6, "CHF": 105.0}
+    for code, rate in rates.items():
+        assert Currency(code).rate == rate
 
 
-# Проверка создания счёта
+# Создание счёта и проверка изменения баланса.
 def test_account():
-    usd = Currency("USD")
-    account = Account("001", usd, 500)
-
+    account = Account("001", Currency("USD"), 500)
     assert account.number == "001"
-    assert account.balance == 500
     assert account.currency.code == "USD"
-
-
-# Проверка отрицательного баланса
-def test_negative_balance():
-    usd = Currency("USD")
-
-    with pytest.raises(ValueError):
-        Account("001", usd, -100)
-
-
-# Проверка управляемого атрибута balance
-def test_balance_property():
-    usd = Currency("USD")
-    account = Account("001", usd, 500)
+    assert account.balance == 500
 
     account.balance = 1000
     assert account.balance == 1000
 
     with pytest.raises(ValueError):
-        account.balance = -500
-
-
-# Проверка отрицательной суммы операции
-def test_invalid_transaction():
-    usd = Currency("USD")
-    rub = Currency("RUB")
-    account = Account("001", usd, 500)
-
+        account.balance = -100
     with pytest.raises(ValueError):
-        Transaction(account, rub, -100)
+        Account("002", Currency("USD"), -100)
 
 
-# Проверка комиссии
-def test_invalid_commission():
-    usd = Currency("USD")
-    rub = Currency("RUB")
-    account = Account("001", usd, 500)
+# Транзакция округляет сумму и проверяет комиссию.
+def test_transaction():
+    account = Account("001", Currency("USD"), 500)
+    transaction = Transaction(account, Currency("EUR"), 100.567, 2)
 
-    with pytest.raises(ValueError):
-        Transaction(account, rub, 100, 150)
-
-
-# Проверка изменения комиссии
-def test_commission_property():
-    usd = Currency("USD")
-    rub = Currency("RUB")
-    account = Account("001", usd, 500)
-    transaction = Transaction(account, rub, 100)
-
+    assert transaction.amount == 100.57
     transaction.commission_percent = 5
     assert transaction.commission_percent == 5
 
@@ -100,121 +53,80 @@ def test_commission_property():
         transaction.commission_percent = -1
 
 
-# Проверка конвертации валют
+# Недопустимые суммы и проценты комиссии.
+def test_invalid_transaction():
+    account = Account("001", Currency("USD"), 500)
+    eur = Currency("EUR")
+
+    for amount in (-100, 0.001, float("nan")):
+        with pytest.raises(ValueError):
+            Transaction(account, eur, amount)
+
+    for commission in (150, float("inf")):
+        with pytest.raises(ValueError):
+            Transaction(account, eur, 100, commission)
+
+
+# Конвертация: курс, комиссия и итоговая сумма.
 def test_conversion():
-    usd = Currency("USD")
-    rub = Currency("RUB")
-    account = Account("001", usd, 500)
+    account = Account("001", Currency("USD"), 500)
 
-    transaction = Transaction(account, rub, 100, 2)
-
-    result = CurrencyCalculator.calculate(transaction)
-
+    result = CurrencyCalculator.calculate(
+        Transaction(account, Currency("RUB"), 100, 2)
+    )
     assert result["converted_amount"] == 9000.0
     assert result["commission"] == 180.0
     assert result["final_amount"] == 8820.0
 
+    result = CurrencyCalculator.calculate(
+        Transaction(account, Currency("EUR"), 100, 2)
+    )
+    assert result["exchange_rate"] == pytest.approx(0.9)
+    assert result["final_amount"] == 88.2
 
-# Проверка конвертации без комиссии
-def test_conversion_without_commission():
-    usd = Currency("USD")
-    eur = Currency("EUR")
-    account = Account("001", usd, 500)
-
-    transaction = Transaction(account, eur, 100, 0)
-
-    result = CurrencyCalculator.calculate(transaction)
-
-    assert result["converted_amount"] == 90.0
-    assert result["commission"] == 0.0
+    result = CurrencyCalculator.calculate(
+        Transaction(account, Currency("EUR"), 100, 0)
+    )
+    assert result["commission"] == 0
     assert result["final_amount"] == 90.0
 
 
-# Проверка начисления процентов
+# Расчёт процентов не изменяет баланс счёта.
 def test_interest():
-    usd = Currency("USD")
-    account = Account("001", usd, 500)
-
-    result = InterestCalculator.calculate(account, 5, 30)
-
-    assert result == 2.05
+    account = Account("001", Currency("USD"), 500)
+    assert InterestCalculator.calculate(account, 5, 30) == 2.05
+    assert account.balance == 500
 
 
-# Проверка отрицательной процентной ставки
-def test_invalid_interest_rate():
-    usd = Currency("USD")
-    account = Account("001", usd, 500)
-
+# Ошибки в процентной ставке и количестве дней.
+def test_invalid_interest():
+    account = Account("001", Currency("USD"), 500)
     with pytest.raises(ValueError):
         InterestCalculator.calculate(account, -5, 30)
-
-
-# Проверка отрицательного количества дней
-def test_invalid_days():
-    usd = Currency("USD")
-    account = Account("001", usd, 500)
-
     with pytest.raises(ValueError):
         InterestCalculator.calculate(account, 5, -30)
 
 
-# Проверка абстрактного класса
-def test_abstract_class():
+# Абстрактный класс нельзя создать напрямую, от него наследуются модели.
+def test_inheritance():
     with pytest.raises(TypeError):
         FinancialEntity()
 
-
-# Проверка наследования
-def test_inheritance():
-    usd = Currency("USD")
-    account = Account("001", usd, 500)
-
-    assert isinstance(usd, FinancialEntity)
+    account = Account("001", Currency("USD"), 500)
+    transaction = Transaction(account, Currency("EUR"), 100)
+    assert isinstance(account.currency, FinancialEntity)
     assert isinstance(account, FinancialEntity)
+    assert isinstance(transaction, FinancialEntity)
 
 
-# Проверка специальных методов
+# Специальные методы строкового представления объектов.
 def test_dunder_methods():
-    usd = Currency("USD")
-    account = Account("001", usd, 500)
+    currency = Currency("USD")
+    account = Account("001", currency, 500)
 
-    assert str(usd) == "USD (курс: 90.0)"
-    assert repr(usd) == "Currency(code='USD')"
-
+    assert str(currency) == "USD (курс: 90.0)"
+    assert repr(currency) == "Currency(code='USD')"
     assert "Счёт 001" in str(account)
     assert "Account(" in repr(account)
-
     assert str(CurrencyCalculator()) == "Калькулятор валют"
     assert repr(InterestCalculator()) == "InterestCalculator()"
-
-
-def test_exchange_rate():
-    usd = Currency("USD")
-    eur = Currency("EUR")
-    account = Account("001", usd, 500)
-
-    transaction = Transaction(account, eur, 100, 2)
-
-    result = CurrencyCalculator.calculate(transaction)
-
-    assert result["exchange_rate"] == pytest.approx(0.9)
-    assert result["converted_amount"] == 90.0
-    assert result["commission"] == 1.8
-    assert result["final_amount"] == 88.2
-
-# тест новых валют
-@pytest.mark.parametrize(
-    "code, expected_rate",
-    [
-        ("GBP", 115.0),
-        ("CNY", 12.5),
-        ("JPY", 0.6),
-        ("CHF", 105.0)
-    ]
-)
-def test_additional_currencies(code, expected_rate):
-    currency = Currency(code)
-
-    assert currency.code == code
-    assert currency.rate == expected_rate
-

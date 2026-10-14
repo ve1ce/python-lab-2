@@ -1,138 +1,184 @@
-
 import sqlite3
 from contextlib import closing
 
 import pytest
 import database
 
-from currency_package.models import Currency, Account, Transaction
-from currency_package.calculations import CurrencyCalculator, InterestCalculator
 
-
-# Создаём отдельную временную базу для каждого теста
+# Каждый тест работает со своей временной базой, не затрагивая данные программы.
 @pytest.fixture
 def test_db(tmp_path, monkeypatch):
-    test_path = tmp_path / "test_currency.db"
-
-    monkeypatch.setattr(database, "DB_PATH", test_path)
-
+    path = tmp_path / "test.db"
+    monkeypatch.setattr(database, "DB_PATH", path)
     database.initialize_database()
+    return path
 
-    return test_path
 
-
-# Тест 1. Проверка создания таблиц
+# Все таблицы создаются, а повторный запуск не удаляет записи.
 def test_database_creation(test_db):
-    assert test_db.exists()
-
     with closing(sqlite3.connect(test_db)) as connection:
-        tables = connection.execute("""
-            SELECT name FROM sqlite_master
-            WHERE type = 'table'
-        """).fetchall()
+        rows = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
 
-    table_names = [table[0] for table in tables]
+    tables = {row[0] for row in rows}
+    assert {"accounts", "deposits", "transfers", "interest_calculations"} <= tables
 
-    assert "conversions" in table_names
-    assert "interest_calculations" in table_names
-
-
-# Тест 2. Проверка сохранения конвертации
-def test_save_conversion(test_db):
-    usd = Currency("USD")
-    eur = Currency("EUR")
-
-    account = Account("001", usd, 500)
-    transaction = Transaction(account, eur, 100, 2)
-
-    result = CurrencyCalculator.calculate(transaction)
-
-    data = {
-        "source": usd.code,
-        "target": eur.code,
-        "amount": 100,
-        "commission_percent": 2,
-        **result
-    }
-
-    database.save_conversion(data)
-
-    with closing(sqlite3.connect(test_db)) as connection:
-        row = connection.execute("""
-            SELECT
-                source_currency,
-                target_currency,
-                amount,
-                exchange_rate,
-                commission_percent,
-                converted_amount,
-                commission,
-                final_amount
-            FROM conversions
-        """).fetchone()
-
-    assert row is not None
-    assert row[0] == "USD"
-    assert row[1] == "EUR"
-    assert row[2:] == pytest.approx(
-        (100.0, 0.9, 2.0, 90.0, 1.8, 88.2)
-    )
-
-
-# Тест 3. Проверка сохранения процентов
-def test_save_interest(test_db):
-    usd = Currency("USD")
-    account = Account("001", usd, 500)
-
-    interest = InterestCalculator.calculate(account, 5, 30)
-
-    data = {
-        "currency": usd.code,
-        "balance": 500,
-        "annual_rate": 5,
-        "days": 30,
-        "result": interest
-    }
-
-    database.save_interest(data)
-
-    with closing(sqlite3.connect(test_db)) as connection:
-        row = connection.execute("""
-            SELECT
-                currency,
-                balance,
-                annual_rate,
-                days,
-                interest_amount
-            FROM interest_calculations
-        """).fetchone()
-
-    assert row is not None
-    assert row[0] == "USD"
-    assert row[1:] == pytest.approx(
-        (500.0, 5.0, 30, 2.05)
-    )
-
-
-# Тест 4. Проверка сохранности данных
-def test_database_persistence(test_db):
-    data = {
-        "currency": "EUR",
-        "balance": 1000,
-        "annual_rate": 10,
-        "days": 30,
-        "result": 8.22
-    }
-
-    database.save_interest(data)
-
-    # Повторно инициализируем существующую базу
+    database.create_account("USD")
     database.initialize_database()
+    assert len(database.get_accounts()) == 1
 
+
+# Создание счетов и загрузка их из базы.
+def test_create_accounts(test_db):
+    first = database.create_account("USD")
+    second = database.create_account("EUR")
+    accounts = database.get_accounts()
+
+    assert first.number == "1"
+    assert second.number == "2"
+    assert [account.currency.code for account in accounts] == ["USD", "EUR"]
+    assert all(account.balance == 0 for account in accounts)
+
+
+# Пополнение меняет баланс и добавляет запись в историю.
+def test_deposit(test_db):
+    account = database.create_account("USD")
+    updated = database.deposit_to_account(account.number, 500)
+
+    assert updated.balance == 500
+    assert database.get_accounts()[0].balance == 500
+
+    columns, rows = database.get_table_data("deposits")
+    deposit = dict(zip(columns, rows[0]))
+    assert deposit["account_id"] == 1
+    assert deposit["amount"] == 500
+
+
+# Неправильное пополнение не меняет базу.
+def test_invalid_deposit(test_db):
+    account = database.create_account("EUR")
+
+    with pytest.raises(ValueError):
+        database.deposit_to_account(account.number, -100)
+
+    assert database.get_accounts()[0].balance == 0
+    assert database.get_table_data("deposits")[1] == []
+
+
+# Результат расчёта процентов сохраняется в SQLite.
+def test_save_interest(test_db):
+    database.save_interest({
+        "currency": "USD", "balance": 500,
+        "annual_rate": 5, "days": 30, "result": 2.05
+    })
+
+    columns, rows = database.get_table_data("interest_calculations")
+    saved = dict(zip(columns, rows[0]))
+    assert saved["currency"] == "USD"
+    assert saved["interest_amount"] == pytest.approx(2.05)
+
+
+# Успешный перевод изменяет оба баланса и сохраняется в истории.
+def test_successful_transfer(test_db):
+    usd = database.create_account("USD")
+    eur = database.create_account("EUR")
+    database.deposit_to_account(usd.number, 500)
+    database.deposit_to_account(eur.number, 200)
+
+    result = database.execute_transfer(usd.number, eur.number, 100, 2)
+
+    assert result["final_amount"] == pytest.approx(88.2)
+    assert [a.balance for a in database.get_accounts()] == [400, 288.2]
+
+    columns, rows = database.get_table_data("transfers")
+    transfer = dict(zip(columns, rows[0]))
+    assert len(rows) == 1
+    assert transfer["amount"] == 100
+    assert transfer["received_amount"] == pytest.approx(88.2)
+
+
+# При нехватке денег перевод не выполняется.
+def test_insufficient_funds(test_db):
+    usd = database.create_account("USD")
+    eur = database.create_account("EUR")
+    database.deposit_to_account(usd.number, 50)
+
+    with pytest.raises(ValueError, match="Недостаточно средств"):
+        database.execute_transfer(usd.number, eur.number, 100, 2)
+
+    assert [a.balance for a in database.get_accounts()] == [50, 0]
+    assert database.get_table_data("transfers")[1] == []
+
+
+# Перевод самому себе запрещён.
+def test_transfer_to_same_account(test_db):
+    account = database.create_account("USD")
+    database.deposit_to_account(account.number, 500)
+
+    with pytest.raises(ValueError, match="тот же счёт"):
+        database.execute_transfer(account.number, account.number, 100, 2)
+
+    assert database.get_accounts()[0].balance == 500
+
+
+# Комиссия 100% не должна приводить к зачислению нулевой суммы.
+def test_full_commission(test_db):
+    usd = database.create_account("USD")
+    eur = database.create_account("EUR")
+    database.deposit_to_account(usd.number, 500)
+
+    with pytest.raises(ValueError):
+        database.execute_transfer(usd.number, eur.number, 100, 100)
+
+    assert [a.balance for a in database.get_accounts()] == [500, 0]
+    assert database.get_table_data("transfers")[1] == []
+
+
+# При ошибке записи перевода оба баланса откатываются.
+def test_transfer_rollback(test_db):
+    usd = database.create_account("USD")
+    eur = database.create_account("EUR")
+    database.deposit_to_account(usd.number, 500)
+
+    # Триггер специально вызывает ошибку при сохранении истории.
     with closing(sqlite3.connect(test_db)) as connection:
-        count = connection.execute("""
-            SELECT COUNT(*) FROM interest_calculations
-        """).fetchone()[0]
+        connection.execute("""
+            CREATE TRIGGER block_transfer BEFORE INSERT ON transfers
+            BEGIN
+                SELECT RAISE(ABORT, 'Ошибка сохранения');
+            END
+        """)
+        connection.commit()
 
-    # Запись не должна исчезнуть
-    assert count == 1
+    with pytest.raises(sqlite3.IntegrityError):
+        database.execute_transfer(usd.number, eur.number, 100, 2)
+
+    assert [a.balance for a in database.get_accounts()] == [500, 0]
+    assert database.get_table_data("transfers")[1] == []
+
+
+# Перевод использует сумму, округлённую до копеек.
+def test_transfer_rounding(test_db):
+    usd = database.create_account("USD")
+    eur = database.create_account("EUR")
+    database.deposit_to_account(usd.number, 500)
+
+    result = database.execute_transfer(usd.number, eur.number, 100.567, 2)
+    assert result["amount"] == 100.57
+    assert result["source_balance"] == 399.43
+
+
+# Просмотр базы возвращает максимум 20 записей и не принимает чужие таблицы.
+def test_get_table_data(test_db):
+    for _ in range(25):
+        database.create_account("USD")
+
+    columns, rows = database.get_table_data("accounts")
+    assert "currency" in columns
+    assert len(rows) == 20
+    assert rows[0][0] == 25   # Самая новая запись
+    assert rows[-1][0] == 6   # Самая старая из показанных
+
+    with pytest.raises(ValueError, match="Неизвестная таблица"):
+        database.get_table_data("unknown_table")

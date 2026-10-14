@@ -37,7 +37,19 @@ class CurrencyCalculator:
             "final_amount": final_amount
         }
 
+    @staticmethod
+    def calculate_transfer(transaction):
+        # Выполняем обычный расчёт конвертации
+        result = CurrencyCalculator.calculate(transaction)
 
+        # Проверяем, что получатель получит деньги
+        if result["final_amount"] <= 0:
+            raise ValueError(
+                "После конвертации и комиссии "
+                "сумма зачисления должна быть положительной"
+            )
+
+        return result
 
 class InterestCalculator:
 
