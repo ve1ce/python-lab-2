@@ -21,7 +21,7 @@ TABLES = {
 
 
 class ReturnToMenu(Exception):
-    """Позволяет выйти из любой операции по команде 0."""
+    """Позволяет выйти из любой операции по команде 0"""
 
 
 def ask_input(message):
@@ -52,7 +52,7 @@ def report_path(default_name):
 
 
 def create_account_menu():
-    """Создание нового счёта с нулевым балансом."""
+    """Создание нового счёта с нулевым балансом"""
     print("\n=== СОЗДАНИЕ СЧЁТА ===")
     print("Доступные валюты:", ", ".join(Currency.RATES))
     print("0. Вернуться в главное меню")
@@ -62,7 +62,7 @@ def create_account_menu():
 
 
 def show_accounts_menu(accounts=None):
-    """Вывод счетов; список можно передать, чтобы не читать БД повторно."""
+    """Вывод счетов; список можно передать, чтобы не читать БД повторно"""
     if accounts is None:
         accounts = get_accounts()
 
@@ -78,7 +78,7 @@ def show_accounts_menu(accounts=None):
 
 
 def deposit_account_menu():
-    """Пополнение выбранного счёта."""
+    """Пополнение выбранного счёта"""
     accounts = get_accounts()
     if not accounts:
         print("Сначала необходимо создать счёт.")
@@ -94,7 +94,7 @@ def deposit_account_menu():
 
 
 def transfer_currency():
-    """Показывает расчёт и выполняет перевод только после подтверждения Y."""
+    """Показывает расчёт и выполняет перевод только после подтверждения Y"""
     accounts = get_accounts()
     if len(accounts) < 2:
         print("Для перевода необходимо создать минимум два счёта.")
@@ -156,11 +156,10 @@ def transfer_currency():
     print(f"Зачислено: {operation['final_amount']:.2f} {target.currency.code}")
     print(f"Остаток счёта №{source.number}: {operation['source_balance']:.2f} {source.currency.code}")
     print(f"Баланс счёта №{target.number}: {operation['target_balance']:.2f} {target.currency.code}")
-    print("Операция сохранена в SQLite!")
 
 
 def calculate_interest():
-    """Справочный расчёт процентов без изменения реального баланса."""
+    """Справочный расчёт процентов без изменения реального баланса"""
     print("\n=== РАСЧЁТ ПРОЦЕНТОВ ===")
     print("Доступные валюты:", ", ".join(Currency.RATES))
     print("0. Вернуться в главное меню")
@@ -177,11 +176,10 @@ def calculate_interest():
         "annual_rate": annual_rate, "days": days, "result": interest
     })
     print(f"\nРассчитанные проценты: {interest:.2f} {currency.code}")
-    print("Результат сохранён в SQLite!")
 
 
 def save_report():
-    """Word: последний перевод и последний расчёт процентов из SQLite."""
+    """Word: последний перевод и последний расчёт процентов из SQLite"""
     transfer_columns, transfer_rows = get_table_data("transfers")
     interest_columns, interest_rows = get_table_data("interest_calculations")
     if not transfer_rows and not interest_rows:
@@ -212,7 +210,7 @@ def save_report():
 
 
 def view_database_menu():
-    """Просмотр последних 20 записей выбранной таблицы."""
+    """Просмотр последних 20 записей выбранной таблицы"""
     print("\n=== ПРОСМОТР БАЗЫ ДАННЫХ ===")
     for number, (_, title) in TABLES.items():
         print(f"{number}. {title}")
@@ -238,7 +236,7 @@ def view_database_menu():
 
 
 def save_excel_report():
-    """Excel: последние 20 записей из каждой таблицы SQLite."""
+    """Excel: последние 20 записей из каждой таблицы SQLite"""
     print("\n=== ЭКСПОРТ В EXCEL ===")
     print("В Excel попадут последние 20 записей каждой таблицы.")
     print("0. Вернуться в главное меню")

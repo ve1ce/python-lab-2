@@ -5,7 +5,7 @@ from openpyxl.utils import get_column_letter
 
 
 def export_report(file_path, conversion=None, interest=None):
-    """Создаёт Word-отчёт по последнему переводу и расчёту процентов."""
+    """Создаёт Word-отчёт по последнему переводу и расчёту процентов"""
     document = Document()
     document.add_heading("Отчёт по валютным операциям", 0)
     document.add_paragraph("Лабораторная работа №2 — Курсы валют")
@@ -53,18 +53,14 @@ def export_report(file_path, conversion=None, interest=None):
             f"Годовая ставка: {interest['annual_rate']}%",
             f"Количество дней: {interest['days']}",
             f"Рассчитанные проценты: {interest['result']:.2f} {currency}",
-            "Расчёт справочный: проценты не зачислялись на счёт."
         ]:
             document.add_paragraph(line)
 
-    document.add_paragraph(
-        "Расчёты выполнены с использованием фиксированных демонстрационных курсов валют."
-    )
     document.save(file_path)
 
 
 def export_excel(filename, table_data):
-    """Сохраняет последние 20 записей каждой таблицы SQLite в Excel."""
+    """Сохраняет последние записи каждой таблицы SQLite в Excel"""
     sheets = {
         "accounts": "Счета",
         "deposits": "Пополнения",
@@ -89,7 +85,7 @@ def export_excel(filename, table_data):
         # Выделяем шапку и закрепляем её при прокрутке
         for cell in worksheet[1]:
             cell.font = Font(bold=True, color="FFFFFF")
-            cell.fill = PatternFill(fill_type="solid", fgColor="1F4E78")
+            cell.fill = PatternFill(fill_type="solid", fgColor="383838")
         worksheet.freeze_panes = "A2"
         worksheet.auto_filter.ref = worksheet.dimensions
 

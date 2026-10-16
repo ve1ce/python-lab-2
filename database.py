@@ -14,7 +14,7 @@ DB_PATH = Path(os.environ.get(
 
 
 def initialize_database():
-    """Создаёт таблицы, если база запускается впервые."""
+    """Создаёт таблицы, если база запускается впервые"""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DB_PATH)
     try:
@@ -67,7 +67,7 @@ def initialize_database():
 
 
 def save_interest(data):
-    """Сохраняет результат расчёта процентов."""
+    """Сохраняет результат расчёта процентов"""
     connection = sqlite3.connect(DB_PATH)
     try:
         connection.execute("""
@@ -82,7 +82,7 @@ def save_interest(data):
 
 
 def create_account(currency_code):
-    """Создаёт пустой счёт и возвращает объект Account."""
+    """Создаёт пустой счёт и возвращает объект Account"""
     currency = Currency(currency_code)
     connection = sqlite3.connect(DB_PATH)
     try:
@@ -97,7 +97,7 @@ def create_account(currency_code):
 
 
 def get_accounts():
-    """Возвращает все счета в порядке их создания."""
+    """Возвращает все счета в порядке их создания"""
     connection = sqlite3.connect(DB_PATH)
     try:
         rows = connection.execute(
@@ -110,7 +110,7 @@ def get_accounts():
 
 
 def _get_account(connection, account_id, error_message):
-    """Находит счёт и превращает запись SQLite в объект Account."""
+    """Находит счёт и превращает запись SQLite в объект Account"""
     row = connection.execute(
         "SELECT id, currency, balance FROM accounts WHERE id = ?",
         (account_id,)
@@ -121,7 +121,7 @@ def _get_account(connection, account_id, error_message):
 
 
 def deposit_to_account(account_id, amount):
-    """Пополняет счёт и записывает пополнение в историю."""
+    """Пополняет счёт и записывает пополнение в историю"""
     connection = sqlite3.connect(DB_PATH)
     try:
         connection.execute("PRAGMA foreign_keys = ON")
@@ -148,7 +148,7 @@ def deposit_to_account(account_id, amount):
 
 
 def execute_transfer(source_id, target_id, amount, commission_percent):
-    """Переводит деньги между счетами одной SQL-транзакцией."""
+    """Переводит деньги между счетами одной SQL-транзакцией"""
     connection = sqlite3.connect(DB_PATH)
     try:
         connection.execute("PRAGMA foreign_keys = ON")
@@ -207,7 +207,7 @@ def execute_transfer(source_id, target_id, amount, commission_percent):
 
 
 def get_table_data(table_name):
-    """Возвращает последние 20 записей таблицы для меню и Excel."""
+    """Возвращает последние 20 записей таблицы для меню и Excel"""
     allowed_tables = (
         "accounts", "deposits", "transfers", "interest_calculations"
     )
